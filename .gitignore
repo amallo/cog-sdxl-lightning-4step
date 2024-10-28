@@ -3,3 +3,5 @@ __pycache__
 checkpoints
 unet-cache
 safety-cache
+/venv
+/trained-model
