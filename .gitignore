@@ -5,3 +5,8 @@ unet-cache
 safety-cache
 /venv
 /trained-model
+/image-processor-cache
+/depth-estimation-cache
+/model-cache
+/refiner-cache
+/feature-extractor-cache

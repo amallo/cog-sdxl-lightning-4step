@@ -14,9 +14,9 @@ __pycache__
 .ruff_cache
 
 # Exclude model cache files
-safety-cache
-unet-cache
-checkpoints
+#safety-cache
+#unet-cache
+#checkpoints
 
 # Exclude Python virtual environment
 /venv
