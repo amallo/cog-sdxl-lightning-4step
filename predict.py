@@ -185,7 +185,7 @@ class Predictor(BasePredictor):
             "image" : image,
             "strength" : strength,
             "num_outputs" : num_outputs,
-            "refine" : refine,
+            "refine" : "no_refiner",
             "scheduler" : scheduler,
             "refine_steps" : refine_steps,
             "lora_scale": lora_scale,
@@ -225,7 +225,7 @@ class Predictor(BasePredictor):
 
         for output in outputs:
             file_id = uuid.uuid4()
-            output_path = f"/tmp/output-{generation_id}-{file_id}.png"
+            output_path = f"/tmp/{generation_id}-{file_id}.png"
             output.save(output_path)
             output_paths.append(Path(output_path))
         return output_paths

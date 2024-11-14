@@ -85,7 +85,7 @@ class SdxlBackgroundPipeline(Pipeline):
         if seed is None:
             seed = int.from_bytes(os.urandom(4), "big")
         
-        prompt = args['landscape_prompt'] + " " + args['outfit_prompt'] + " " + args['camera_prompt']
+        prompt = args['landscape_prompt'] + " " + args['camera_prompt']
 
         generator = torch.Generator("cuda").manual_seed(seed)
      
