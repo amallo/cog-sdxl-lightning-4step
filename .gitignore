@@ -10,3 +10,5 @@ safety-cache
 /model-cache
 /refiner-cache
 /feature-extractor-cache
+.pyre
+./bin

@@ -9,8 +9,17 @@ class YoloPersonTransformator:
         self.yolo = YOLO(yolo_cache)
        
     def isolate(self, image):
-        image_np = np.array(image)
+        # Charger l'image
+        if image.mode == 'RGBA':
+            # Créer un fond blanc
+            background = Image.new('RGBA', image.size, (255, 255, 255, 255))
+            # Composer l'image sur le fond blanc
+            image = Image.alpha_composite(background, image)
+            # Convertir en RGB
+            image = image.convert('RGB')
+            
         # Détecter les personnes avec YOLO
+        image_np = np.array(image)
         results = self.yolo(image_np)
 
         # Créer un masque vide

@@ -1,5 +1,6 @@
 # Obtenir le chemin racine du projet de manière dynamique
 import os
+from pathlib import Path
 import sys
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -10,12 +11,9 @@ import time
 from core.cache.download_weights import DownloadWeights
 import torch
 sys.path.extend(['/IP-Adapter'])
-from ip_adapter.custom_pipelines import StableDiffusionXLCustomPipeline
-from transformers import CLIPImageProcessor, DPTFeatureExtractor, DPTForDepthEstimation
-
 from diffusers import ControlNetModel
 
-
+ROOT_DIR_PATH = Path(ROOT_DIR)
 
 # Make cache folder
 """
@@ -36,5 +34,5 @@ if not os.path.exists(BASE_CACHE):
         
 DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas", cache_dir=IMAGE_PROCESSOR_CACHE)
 """
-download_weights = DownloadWeights(ROOT_DIR)
+download_weights = DownloadWeights(ROOT_DIR_PATH)
 download_weights()

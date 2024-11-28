@@ -9,7 +9,13 @@ import torch
 
 def generate_pytorch_face_mask(image):
     # Charger l'image
-    #image = Image.open(image_path)
+    if image.mode == 'RGBA':
+        # Créer un fond blanc
+        background = Image.new('RGBA', image.size, (255, 255, 255, 255))
+        # Composer l'image sur le fond blanc
+        image = Image.alpha_composite(background, image)
+        # Convertir en RGB
+        image = image.convert('RGB')
     width, height = image.size
 
     # Créer un masque noir de la même taille

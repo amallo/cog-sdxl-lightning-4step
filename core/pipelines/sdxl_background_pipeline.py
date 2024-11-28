@@ -65,14 +65,7 @@ class SdxlBackgroundPipeline(Pipeline):
             use_safetensors=True,
         ).to("cuda")
         print(f"Loading Refiner pipeline from path {self.refiner_model}" )
-        self.refiner = DiffusionPipeline.from_pretrained(
-            self.refiner_model,
-            torch_dtype=torch.float16,
-            text_encoder_2=self.pipe.text_encoder_2,
-            vae=self.pipe.vae,
-            use_safetensors=True,
-        ).to("cuda")
-
+       
 
         print(f"Loading LORA model from path {self.lora_model}")    
         self.pipe.load_lora_weights(self.lora_model, weight_name="lora.safetensors")
@@ -85,7 +78,7 @@ class SdxlBackgroundPipeline(Pipeline):
         if seed is None:
             seed = int.from_bytes(os.urandom(4), "big")
         
-        prompt = args['landscape_prompt'] + " " + args['camera_prompt']
+        prompt = args['prompt'] + " " + args['camera_prompt']
 
         generator = torch.Generator("cuda").manual_seed(seed)
      
@@ -142,20 +135,6 @@ class SdxlBackgroundPipeline(Pipeline):
         print("Running pipeline")
         #self.pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.3, b2=1.4) # Enable FreeU for quality
         output = pipe(**common_args, **sdxl_kwargs, **cross_attention_kwargs)
-
-        if args['refine'] == "base_image_refiner":
-            refiner_kwargs = {
-                "image": output.images,
-            }
-
-            common_args_without_dimensions = {
-                k: v for k, v in common_args.items() if k not in ["width", "height"]
-            }
-
-            if args['refine'] == "base_image_refiner" and args['refine_steps']:
-                common_args_without_dimensions["num_inference_steps"] = args['refine_steps']
-
-            output = self.refiner(**common_args_without_dimensions, **refiner_kwargs)
 
         if not args['disable_safety_checker']:
             _, has_nsfw_content = self.run_safety_checker(output.images)

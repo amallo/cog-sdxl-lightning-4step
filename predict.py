@@ -7,7 +7,7 @@ import os
 import time
 from core.cache.download_weights import DownloadWeights
 from core.transform.yolo_person_transformator import YoloPersonTransformator
-from paths import BASE_CACHE, CONTROLNET_CANNY_PATH, CONTROLNET_DEPTH_PATH, DEPTH_ESTIMATION_CACHE, FEATURE_EXTRACTOR, IMAGE_PROCESSOR_CACHE, LORA_CACHE_CUSTOM, REFINER_MODEL_CACHE, SAFETY_CACHE, YOLO_MODEL_CACHE
+from paths import BASE_CACHE, CONTROLNET_CANNY_PATH, CONTROLNET_DEPTH_PATH, DEPTH_ESTIMATION_CACHE, FEATURE_EXTRACTOR, IMAGE_PROCESSOR_CACHE, IP_ADAPTER_CACHE, LORA_CACHE_CUSTOM, REFINER_MODEL_CACHE, SAFETY_CACHE, YOLO_MODEL_CACHE
 import torch
 from typing import List
 from pathlib import Path as LocalPath
@@ -34,7 +34,7 @@ class KarrasDPM:
 
 
 default_landscape_prompt="""
-An abandoned area left in ruins since the civil war, overgrown vegetation, buildings riddled with bullet holes. 
+TOK.An abandoned area left in ruins since the civil war, overgrown vegetation, buildings riddled with bullet holes. 
 The ground littered with abandoned objects and debris. 
 wrecked vehicules. 
 Cracks and fractured surfaces. The atmosphere is eerie and dark, a post-apocalyptic ambiance. 
@@ -44,12 +44,19 @@ abandoned objects, scattered debris, graffiti, overwhelming desolation.
 """
 
 default_outfit_prompt="""
-People wears post apocalyptic outfit: cargo pants, bulletproof vests with multiple pockets hold ammo, knives in homemade sheaths, and handguns tucked into belts. their faces covered with scars. They carry makeshift weapons, knives in homemade sheaths, and handguns tucked.
+post apocalyptic outfit: cargo pants, bulletproof vests with multiple pockets hold ammo, knives in homemade sheaths, and handguns tucked into belts,
+makeshift weapons, knives in homemade sheaths, and handguns tucked.
 """
 
 default_camera_prompt="""
 High details, Photorealistic, FUJIFILM X-T5,35mm,focal length 53mm,ƒ/1.4 aperture, 1/320s shutter speed, ISO 125, and +2/3 exposure compensation
 """
+default_negative_prompt="""
+blur, cartoon, painting, drawing, illustration, 3D render, CGI, low resolution, abstract, unrealistic lighting, overexposed, underexposed, pixelated, oversaturated colors, grainy, smooth, flat, distorted, artistic, fantasy, bokeh, oil painting, watercolor, sketch, airbrush, digital art, surreal, glowing edges, exaggerated details, unnatural textures, filter effects,
+deformed body features, aberrations,
+Blood, wounds,
+"""
+
 class Predictor(BasePredictor):
     
     def setup(self) -> None:
@@ -74,6 +81,8 @@ class Predictor(BasePredictor):
             cache_dir=ROOT_PATH / CONTROLNET_CANNY_PATH,
             torch_dtype=torch.float16,
         )
+        self.yolo = YoloPersonTransformator(yolo_cache=ROOT_PATH / YOLO_MODEL_CACHE)
+        
         self.landscapePipeline = SdxlBackgroundPipeline(
             safety_checker=safety_checker, 
             get_depth_map=get_depth_map,
@@ -87,7 +96,6 @@ class Predictor(BasePredictor):
             refiner_model=ROOT_PATH / REFINER_MODEL_CACHE,
         ).setup()
 
-        self.yolo = YoloPersonTransformator(yolo_cache=ROOT_PATH / YOLO_MODEL_CACHE)
         self.outfitPipeline = SdxlOutfitPipeline(
             safety_checker=safety_checker,
             yolo=self.yolo,
@@ -95,6 +103,8 @@ class Predictor(BasePredictor):
             lora_model=ROOT_PATH / LORA_CACHE_CUSTOM,
             sdxl_model=ROOT_PATH / BASE_CACHE,
             refiner_model=ROOT_PATH / REFINER_MODEL_CACHE,
+            ip_adapter_model=ROOT_PATH / IP_ADAPTER_CACHE,
+            
         ).setup()
 
     @torch.inference_mode()
@@ -104,7 +114,7 @@ class Predictor(BasePredictor):
         outfit_prompt: str = Input(description="Outfit prompt", default=default_outfit_prompt),
         camera_prompt: str = Input(description="Camera prompt", default=default_camera_prompt),
         negative_prompt: str = Input(
-            description="Negative Input prompt", default="blur, cartoon, painting, drawing, illustration, 3D render, CGI, low resolution, abstract, unrealistic lighting, overexposed, underexposed, pixelated, oversaturated colors, grainy, smooth, flat, distorted, artistic, fantasy, bokeh, oil painting, watercolor, sketch, airbrush, anime, digital art, surreal, glowing edges, exaggerated details, unnatural textures, filter effects"
+            description="Negative Input prompt", default=default_negative_prompt
         ),
         image: Path = Input(
             description="Input image for img2img or inpaint mode",
@@ -125,11 +135,17 @@ class Predictor(BasePredictor):
             choices=SCHEDULERS.keys(),
             default="DPM++2MSDE",
         ),
-        num_inference_steps: int = Input(
-            description="Number of denoising steps",
+        background_num_inference_steps: int = Input(
+            description="Number of denoising steps (Background only)",
             ge=1,
             le=50,
             default=50,
+        ),
+        outfit_num_inference_steps: int = Input(
+            description="Number of denoising steps (Outfit only)",
+            ge=1,
+            le=50,
+            default=30,
         ),
         refine: str = Input(
             description="Which refine style to use",
@@ -140,11 +156,43 @@ class Predictor(BasePredictor):
             description="For base_image_refiner, the number of steps to refine, defaults to num_inference_steps",
             default=5,
         ),
-        guidance_scale: float = Input(
-            description="Scale for classifier-free guidance",
+        enable_freeu: bool = Input(
+            description="Enable FreeU",
+            default=True,
+        ),
+        background_guidance_scale: float = Input(
+            description="Background only. Scale for classifier-free guidance",
             ge=0,
             le=50,
             default=15.8,
+        ),
+        background_strength: float = Input(
+            description="Background only. The bigger this number is, the more image destruction",
+            default=0.4,
+            ge=0.0,
+            le=1.0,
+        ),
+        outfit_guidance_scale: float = Input(
+                description="Outfit only. Scale for classifier-free guidance",
+                ge=0,
+                le=50,
+                default=7.5,
+            ),
+        outfit_ip_adapter_image: Path = Input(
+            description="Outfit only. Adapter image",
+            default=None,
+        ),
+        outfit_ip_adapter_scale: float = Input(
+            description="Outfit only. Adapter scale",
+            default=0.8,
+            ge=0.0,
+            le=1.0,
+        ),
+        outfit_strength: float = Input(
+            description="Outfit only. The bigger this number is, the more image destruction",
+            default=0.4,
+            ge=0.0,
+            le=1.0,
         ),
         lora_scale: float = Input(
             description="Scale for LORA",
@@ -164,12 +212,6 @@ class Predictor(BasePredictor):
             ge=0.0,
             le=1.0,
         ),
-        strength: float = Input(
-            description="The bigger this number is, the more image destruction",
-            default=0.4,
-            ge=0.0,
-            le=1.0,
-        ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
         ),
@@ -179,47 +221,52 @@ class Predictor(BasePredictor):
         ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
-        landscape_kwargs = {
+        background_kwargs = {
             "canny_condition_scale" : canny_condition_scale, 
             "depth_condition_scale" : depth_condition_scale,
             "image" : image,
-            "strength" : strength,
+            "strength" : background_strength,
             "num_outputs" : num_outputs,
             "refine" : "no_refiner",
             "scheduler" : scheduler,
             "refine_steps" : refine_steps,
             "lora_scale": lora_scale,
-            "landscape_prompt": landscape_prompt,
+            "prompt": landscape_prompt,
             "outfit_prompt": outfit_prompt,
+            "outfit_ip_adapter_scale": outfit_ip_adapter_scale,
+            "outfit_ip_adapter_image": outfit_ip_adapter_image,
             "camera_prompt": camera_prompt,
             "negative_prompt": negative_prompt,
-            "guidance_scale": guidance_scale,
+            "guidance_scale": background_guidance_scale,
             "seed": seed,
-            "num_inference_steps": num_inference_steps,
+            "num_inference_steps": background_num_inference_steps,
             "disable_face_recognition": disable_face_recognition,
             "disable_safety_checker": disable_safety_checker,
+            "enable_freeu": enable_freeu,
         }
         print("Running pipeline")
         output_paths = []
-        landscape_result = self.landscapePipeline.predict(landscape_kwargs)
+        landscape_result = self.landscapePipeline.predict(background_kwargs)
         outfit_kwargs = {
             "image" : landscape_result.output_image,
-            "strength" : strength,
+            "strength" : outfit_strength,
             "num_outputs" : num_outputs,
             "refine" : refine,
             "scheduler" : scheduler,
             "refine_steps" : refine_steps,
-            "outfit_prompt": outfit_prompt,
+            "prompt": outfit_prompt,
             "camera_prompt": camera_prompt,
             "negative_prompt": negative_prompt,
-            "guidance_scale": guidance_scale,
+            "guidance_scale": outfit_guidance_scale,
             "seed": seed,
-            "num_inference_steps": num_inference_steps,
+            "num_inference_steps": outfit_num_inference_steps,
             "disable_safety_checker": disable_safety_checker,
             "faces_mask": landscape_result.faces_mask,
+            "ip_adapter_image": outfit_ip_adapter_image,
+            "ip_adapter_scale": outfit_ip_adapter_scale,
         }
         outfit_result = self.outfitPipeline.predict(outfit_kwargs)
-        outputs = [landscape_result.output_image, outfit_result.output_image, outfit_result.mask]
+        outputs = [landscape_result.output_image,landscape_result.faces_mask, outfit_result.output_image, outfit_result.clothing_mask]
         output_paths = []
         generation_id = uuid.uuid4()
 

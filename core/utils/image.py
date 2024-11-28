@@ -3,7 +3,7 @@ import uuid
 import cv2
 from PIL import Image
 import numpy as np
-
+from rembg import remove
 from diffusers.utils import load_image
 
 def combine_images(canny_mask_path, face_mask_path):
@@ -71,3 +71,36 @@ def combine_images(mask1, mask2):
     result = np.where(mask2_array == 0, 0, mask1_array)
     
     return Image.fromarray(result)
+
+def remove_background(input_image):
+    output_image = remove(input_image)
+    return output_image
+
+
+# merge two images with a mask
+# mask1 is the image to keep
+# transparent pixels in mask2 are replaced by the pixels of mask1
+# other pixels in mask2 are copied as is
+def merge_images(mask1, mask2):
+    mask1_array = np.array(mask1).astype(np.uint8)
+    mask2_array = np.array(mask2).astype(np.uint8)
+    
+    # Copier les pixels noirs de mask2 dans mask1
+    result = np.where(mask2_array == 0, 0, mask1_array)
+    
+    return Image.fromarray(result)
+
+
+def combine_images_pil(image1, image2, mask):
+    # Convertir en RGB si nécessaire
+    if image1.mode == 'RGBA':
+        image1 = image1.convert('RGB')
+    if image2.mode == 'RGBA':
+        image2 = image2.convert('RGB')
+    
+    # Convertir le masque en mode 'L' si nécessaire
+    if mask.mode != 'L':
+        mask = mask.convert('L')
+    
+    # Combiner
+    return Image.composite(image2, image1, mask)

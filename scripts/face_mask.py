@@ -1,19 +1,25 @@
 import os
 import sys
 
+from pathlib import Path
 
-sys.path.append(os.path.abspath("/home/baba/work/cog-sdxl-lightning-4step"))
+import cv2
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(ROOT_DIR)
+
+ROOT_DIR_PATH = Path(ROOT_DIR)
 
 from core.transform.yolo_person_transformator import YoloPersonTransformator
+from core.transform.media_pipe_face_mask_detector import MediaPipeFaceMaskDetector
 import numpy as np
 from PIL import Image, ImageDraw
 from facenet_pytorch import MTCNN
 from paths import SAM_MODEL_CACHE, YOLO_MODEL_CACHE
-from scripts.generate_person_mask import ROOT_DIR
 import torch
 import mediapipe as mp
 from core.utils.image import combine_images
-
+import cv2 as cv
 
 def generate_pytorch_face_mask(image):
     # Charger l'image
@@ -114,20 +120,50 @@ def generate_precise_face_mask(image: Image, include_parts=None):
                             points = [landmarks[idx] for idx in indices]
                             draw.polygon(points, fill=0)
         return mask
+def create_edge_fade(mask: np.ndarray, fade_width: int = 5) -> np.ndarray:
+    # Convertir en uint8 si nécessaire
+    mask = mask.astype(np.uint8)
+    if mask.max() == 1:
+        mask = mask * 255
+    
+    # Trouver les bords
+    kernel = np.ones((3,3), np.uint8)
+    dilated = cv2.dilate(mask, kernel, iterations=fade_width)
+    eroded = cv2.erode(mask, kernel, iterations=fade_width)
+    edges = dilated - eroded
+    
+    # Créer le fondu sur les bords
+    edge_blur = cv2.GaussianBlur(edges, (fade_width*2+1, fade_width*2+1), 0)
+    
+    # Combiner : masque original + fondu sur les bords
+    result = np.where(mask > 127, 255, 0)  # Nettoyer le masque original
+    result = np.where(edges > 0, edge_blur, result)  # Ajouter le fondu
+    
+    return result.astype(np.uint8)
+
+face_detector = MediaPipeFaceMaskDetector()
 
 image = Image.open(f"./data/inputs/mairie-pacs.jpeg")
-face_mask = generate_precise_face_mask(image)
+image_np = np.array(image)
+face_mask = face_detector(image)
 #mask = generate_face_mask(f"./data/inputs/mairie-pacs.jpeg")
 face_mask.save("face_mask.png")
 
 
-yolo_cache  = f"{ROOT_DIR}/{YOLO_MODEL_CACHE}"
-sam_cache  = f"{ROOT_DIR}/{SAM_MODEL_CACHE}"
+yolo_cache  = ROOT_DIR_PATH/YOLO_MODEL_CACHE 
 
-yolo = YoloPersonTransformator(yolo_cache=yolo_cache, sam_cache=sam_cache)
+yolo = YoloPersonTransformator(yolo_cache=yolo_cache)
 person_mask = yolo.isolate(image)
 person_mask.save(f"./person_mask.png")
 
+face_mask_np = np.array(face_mask)  
+person_mask_np = np.array(person_mask)
+clothing_mask_np = np.logical_and(person_mask_np, face_mask_np)
+clothing_mask = clothing_mask_np.astype(np.uint8) * 255
+clothing_mask_pil = Image.fromarray(clothing_mask)
 
-combined_mask = combine_images(person_mask, face_mask)
-combined_mask.save(f"./combined_mask.png")
+
+# blur radius and diameter
+radius, diameter = 20, 40
+
+clothing_mask_pil.save(f"./clothing_mask.png")
